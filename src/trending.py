@@ -43,18 +43,22 @@ def compute_station_trending(trips_file, reduction):
         tokens = line.split(',')
         if len(tokens) < 5:
             continue
-        for k, v in trends:
+        for k, v in trends.items():
             trends[k] = v * reduction
         station_id = tokens[4]
+        if len(station_id) == 0 and len(tokens) > 6:
+            station_id = tokens[6]
+        if len(station_id) == 0:
+            continue
         trends[station_id] += 1
         if trends[station_id] > result[station_id]:
             result[station_id] = trends[station_id]
     return result
 
 def print_results(trending_scores, stations_map):
-    for station_id, score in trending_scores:
+    for station_id, score in trending_scores.items():
         station_name = stations_map.get(station_id, station_id)
-        print('{0} {1}'.format(station_name, score))
+        print('{1},{0}'.format(station_name, score))
 
 if __name__ == '__main__':
     options, remainder = getopt.getopt(sys.argv[1:], 's:t:r:', ['stations=', 'trips=', 'reduction='])
