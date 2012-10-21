@@ -67,19 +67,10 @@
         return result;
     }
 
-    function restock(stations) {
-        var stationId;
-        for (stationId in stations) {
-            stations[stationId].usage = 0;
-        }
-    }
-
     function initStationTrends(stations) {
-        var result = {}, stationId, station;
+        var stationId, result = {};
         for (stationId in stations) {
-            station = stations[stationId];
             result[stationId] = {
-                id : station.id(),
                 trend : 0,
                 capacity : 0,
                 usage : 0
@@ -88,30 +79,46 @@
         return result;
     }
 
-    function cool(trends, decay) {
-        var stationId, station;
-        for (stationId in trends) {
-            station = trends[stationId];
-            sation.trend *= decay;
+    /**
+     * Resets the bike usage at each station
+     * 
+     * @param {Object.<number, Object>} stationTrends
+     */
+    function restock(stationTrends) {
+        var stationId;
+        for (stationId in stationTrends) {
+            stationTrends[stationId].usage = 0;
         }
     }
 
-    function generateTimeLapseData(file, stations, trips, rate, period, decay) {
+    /**
+     * Cools the trending score at each station
+     * 
+     * @param {Object.<number, Object>} stationTrends
+     * @param {number} decay The decay rate (should be between 0 and 1)
+     */
+    function cool(stationTrends, decay) {
+        var stationId;
+        for (stationId in stationTrends) {
+            stationTrends[stationId].trend *= decay;
+        }
+    }
+
+    function timelapse(file, stations, trips, rate, period, decay) {
         var fs = require("fs");
         var util = require("util");
         var stream = fs.createWriteStream(file);
         stream.once("open", function() {
-            var trip, str, station;
             var trends = initStationTrends(stations);
-            var startTime = trips[0].startDate().getTime();
+            var firstTrip = trips[0].startDate().getTime();
             // 1 day === 86400000 milliseconds
-            var nextPeriod = new Date(startTime + reset * 86400000);
-            var nextFrame = new Date(startTime + rate * 1000);
-            for (trip in trips) {
-                startTime = trip.startDate();
+            var nextPeriod = new Date(firstTrip + period * 86400000);
+            var nextFrame = new Date(firstTrip + rate * 1000);
+            trips.forEach(function(trip) {
+                var station, str, startTime = trip.startDate();
                 if (startTime > nextPeriod) {
                     restock(trends);
-                    nextPeriod = new Date(startTime + reset * 86400000);
+                    nextPeriod = new Date(startTime + period * 86400000);
                 } else {
                     trends[trip.endStationId()].usage -= 1;
                     station = trends[trip.startStationId()];
@@ -121,13 +128,13 @@
                     }
                 }
                 while (startTime > nextFrame) {
-                    cool(trends);
+                    cool(trends, decay);
                     str = util.format("%s,%s\n", nextFrame.getTime(), JSON.stringify(trends));
                     stream.write(str);
                     nextFrame = new Date(nextFrame.getTime() + rate * 1000);
                 }
                 trends[trip.startStationId()].trend += 1;
-            }
+            });
         });
     }
 
@@ -141,17 +148,17 @@
 
         parser.addArgument([ "-s", "--stations" ], {
             help : "Hubway stations file (csv)",
-            required : true
+            defaultValue : "./data/stations.csv"
         });
         parser.addArgument([ "-t", "--trips" ], {
             help : "Hubway trips file (csv)",
-            required : true
+            defaultValue : "./data/trips.csv"
         });
         parser.addArgument([ "-o", "--output" ], {
             help : "Station capacity analysis output",
-            required : true
+            defaultValue : "./results/timelapse.txt"
         });
-        parser.addArgument([ "-f", "--rate" ], {
+        parser.addArgument([ "-f", "--framerate" ], {
             help : "Number of seconds per frame",
             type : "float",
             defaultValue : 3600
@@ -161,11 +168,16 @@
             type : "float",
             defaultValue : 1
         });
+        parser.addArgument([ "-d", "--decay" ], {
+            help : "Station trend decay rate",
+            type : "float",
+            defaultValue : 0.99995
+        });
 
         var args = parser.parseArgs();
         var stations = readStations(args["stations"]);
         var trips = readTrips(args["trips"]);
-        generateTimeLapseData(args["output"], stations, trips, args["rate"], args["reset"]);
+        timelapse(args["output"], stations, trips, args["framerate"], args["reset"], args["decay"]);
     }
 
     main();
